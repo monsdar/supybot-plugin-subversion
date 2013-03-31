@@ -77,8 +77,6 @@ class Notifier(object):
         self.lastRev = Helper.getHeadRevNum(self.url) - 5
         
     def check(self):
-        self.irc.queueMsg( ircmsgs.privmsg(self.channel, "Checking...") )
-        self.irc.noReply()
         headRev = Helper.getHeadRevNum(self.url)
         if(self.lastRev < headRev):
             message = "\x02Subversion Notifier:\x02 Detected changes in '" + self.name + "'. \x02New Revision: " + str(headRev) + "\x02"
