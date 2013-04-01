@@ -24,7 +24,7 @@ __author__ = supybot.Author('Nils Brinkmann', 'MOnsDaR', 'spam@nilsbrinkmann.com
 __contributors__ = {}
 
 # This is a url where the most recent plugin package can be downloaded.
-__url__ = 'TODO' # 'http://supybot.com/Members/yourname/Subversion/download'
+__url__ = 'https://code.google.com/p/supybot-plugin-subversion/'
 
 import config
 import plugin
