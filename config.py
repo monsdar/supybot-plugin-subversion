@@ -21,6 +21,7 @@ Subversion = conf.registerPlugin('Subversion')
 # This is where your configuration variables (if any) should go.  For example:
 # conf.registerGlobalValue(Subversion, 'someConfigVariableName',
 #     registry.Boolean(False, """Help for someConfigVariableName."""))
+conf.registerGroup(Subversion, 'notifiers')
 
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

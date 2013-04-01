@@ -38,5 +38,7 @@ if world.testing:
 Class = plugin.Class
 configure = config.configure
 
+reload(config)
+
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

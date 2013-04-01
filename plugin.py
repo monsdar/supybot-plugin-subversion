@@ -7,13 +7,15 @@
 
 import time
 
-import supybot.utils as utils
+import supybot.callbacks as callbacks
+import supybot.conf as conf
 from supybot.commands import *
 import supybot.plugins as plugins
 import supybot.ircmsgs as ircmsgs
 import supybot.ircutils as ircutils
-import supybot.callbacks as callbacks
+import supybot.registry as registry
 import supybot.schedule as schedule
+import supybot.utils as utils
 
 try:
     import pysvn
@@ -97,20 +99,46 @@ class Subversion(callbacks.Plugin):
     def __init__(self, irc):
         self.__parent = super(Subversion, self)
         self.__parent.__init__(irc)
-        
+                
         #a dict is easier to search through
         #first: notifier.name
         #second: notifier
         self.notifiers = {};
-        
+                
+        #load the notifiers (if any) from config
+        group = conf.supybot.plugins.Subversion.notifiers
+        print group
+        for (name, value) in group.getValues(fullNames=False):
+            channel = value.channel()
+            url = value.url()
+            notifier = Notifier(irc, channel, name, url)
+            self._addNotifier(irc, notifier)
+            irc.queueMsg( ircmsgs.privmsg(channel, "Added notifier '" + notifier.name + "' from config") )
+            irc.noReply()
+
     def die(self):
         #remove all the notifiers
         for key in self.notifiers.keys():
-            schedule.removePeriodicEvent( self.notifiers[key].name )
+            try:
+                schedule.removePeriodicEvent( self.notifiers[key].name )
+            except KeyError:
+                #this happens if the key is not there
+                pass
+                
             del self.notifiers[key]
             
         #kill the rest of the plugin
         self.__parent.die()    
+    
+    def _addNotifier(self, irc, notifier):
+        try:
+            id = schedule.addPeriodicEvent(notifier.check, 5, notifier.name)
+        except AssertionError:
+            #this happens when the plugin was unloaded uncleanly
+            #do nothing else, but add this event to the notifier list (so the user can remove it)
+            irc.queueMsg( ircmsgs.privmsg(channel, "There already is a notifier called '" + notifier.name + "'") )
+            irc.noReply()
+        self.notifiers[notifier.name] = notifier
     
     def getheadrev(self, irc, msg, args, url):
         """<url>
@@ -146,19 +174,17 @@ class Subversion(callbacks.Plugin):
             irc.reply( "There already is a notifier called '" + name + "'" )
             return
         
+        #if not, add it to the config
+        group = conf.supybot.plugins.Subversion.notifiers
+        group.register(name, registry.String(name, ''))
+        group.get(name).register('channel', registry.String(channel, ''))
+        group.get(name).register('url', registry.String(url, ''))
+        
         #needs to be printed before registering the event, because it will be executed immediately
         irc.reply( "Adding Subversion Notifier '" + name + "' to channel " + channel + " with " + url )
         
         notifier = Notifier(irc, channel, name, url)
-        
-        try:
-            id = schedule.addPeriodicEvent(notifier.check, 5, name=name)
-        except AssertionError:
-            irc.reply( "There already is a notifier called '" + name + "'" )
-            #this happens when the plugin was unloaded uncleanly
-            #do nothing else, but add this event to the notifier list (so the user can remove it)
-            
-        self.notifiers[name] = notifier
+        self._addNotifier(irc, notifier)
     add = wrap(add, [('checkChannelCapability', 'op'), 'somethingWithoutSpaces', 'somethingWithoutSpaces'])
     
     
@@ -171,6 +197,12 @@ class Subversion(callbacks.Plugin):
             irc.reply( "There is no notifier named '" + name + "'")
             return
         
+        group = conf.supybot.plugins.Subversion.notifiers
+        for (confName, confValue) in group.getValues(fullNames=False):
+            if( confName == name ):
+                conf.supybot.plugins.Subversion.notifiers.unregister(confName)
+                break;
+        
         schedule.removePeriodicEvent(name)
         irc.reply( "Removed '" + name + "'")
         del self.notifiers[name]
@@ -182,6 +214,11 @@ class Subversion(callbacks.Plugin):
         Lists all the Subversion notifiers
         Optionally posts the list in the given <channel>
         """
+        if not( self.notifiers ):
+            irc.queueMsg( ircmsgs.privmsg(channel, "No notifiers configured") )
+            irc.noReply()
+            return
+        
         for key, notifier in self.notifiers.items():
             output = ""
             output += notifier.channel + " - "
