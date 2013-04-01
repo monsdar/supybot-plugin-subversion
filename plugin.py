@@ -142,7 +142,7 @@ class Subversion(callbacks.Plugin):
     
     def _addNotifier(self, irc, notifier):
         try:
-            id = schedule.addPeriodicEvent(notifier.check, 5, notifier.name)
+            id = schedule.addPeriodicEvent(notifier.check, 60, notifier.name)
         except AssertionError:
             #this happens when the plugin was unloaded uncleanly
             #do nothing else, but add this event to the notifier list (so the user can remove it)
