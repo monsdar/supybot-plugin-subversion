@@ -85,12 +85,10 @@ class Notifier(object):
         if(self.lastRev < headRev):        
             message = "\x02Subversion Notifier:\x02 Detected changes in '" + self.name + "'. \x02New Revision: " + str(headRev) + "\x02"
             self.irc.queueMsg( ircmsgs.privmsg(self.channel, message) )
-            self.irc.noReply()
             log = Helper.getLogItemsByRange(self.url, self.lastRev, headRev)
             for item in log:
                 itemStr = Helper.logItemToString(item)
                 self.irc.queueMsg( ircmsgs.privmsg(self.channel, itemStr) )
-                self.irc.noReply()
             self.lastRev = headRev
         
 class Subversion(callbacks.Plugin):
@@ -104,17 +102,29 @@ class Subversion(callbacks.Plugin):
         #first: notifier.name
         #second: notifier
         self.notifiers = {};
-                
+        
         #load the notifiers (if any) from config
+        #NOTE:  The following for-loop is needed, but I do not know why.
+        #       I reused code from the Alias-plugin to get the config working, but
+        #       it wasn't well documented.
+        #       If this loop misses, no values will be read
         group = conf.supybot.plugins.Subversion.notifiers
-        print group
+        for (name, alias) in registry._cache.iteritems():
+            if name.startswith('supybot.plugins.Subversion.notifiers.'):
+                name = name[len('supybot.plugins.Subversion.notifiers.'):]
+                if '.' in name:
+                    continue
+                conf.registerGlobalValue(group, name, registry.String('', ''))
+                conf.registerGlobalValue(group.get(name), 'channel', registry.String('', ''))
+                conf.registerGlobalValue(group.get(name), 'url', registry.String('', ''))
+
+        #this reads the actual values...
         for (name, value) in group.getValues(fullNames=False):
             channel = value.channel()
             url = value.url()
+            irc.queueMsg( ircmsgs.privmsg(channel, "Adding notifier '" + name + "' from config") )            
             notifier = Notifier(irc, channel, name, url)
             self._addNotifier(irc, notifier)
-            irc.queueMsg( ircmsgs.privmsg(channel, "Added notifier '" + notifier.name + "' from config") )
-            irc.noReply()
 
     def die(self):
         #remove all the notifiers
