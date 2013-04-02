@@ -28,7 +28,9 @@ class Helper(object):
     @staticmethod
     def getHeadRev(url):
         client = pysvn.Client()
-        headRev = client.revpropget("revision", url=url)[0]
+        infoList = client.info2(url, recurse=False)
+        headInfo = infoList[0][1]
+        headRev = headInfo.data["last_changed_rev"]
         return headRev
         
     @staticmethod
