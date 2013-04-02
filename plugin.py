@@ -5,6 +5,8 @@
 #
 ###
 
+import os
+import cPickle
 import time
 
 import supybot.callbacks as callbacks
@@ -13,7 +15,6 @@ from supybot.commands import *
 import supybot.plugins as plugins
 import supybot.ircmsgs as ircmsgs
 import supybot.ircutils as ircutils
-import supybot.registry as registry
 import supybot.schedule as schedule
 import supybot.utils as utils
 
@@ -49,7 +50,10 @@ class Helper(object):
     @staticmethod
     def getLastLogItems(url, numRevs):
         headRevNum = Helper.getHeadRevNum(url)
-        startRevNum = headRevNum - numRevs
+        if(headRevNum <= numRevs):
+            startRevNum = 1
+        else:
+            startRevNum = headRevNum - numRevs
         return Helper.getLogItemsByRange(url, headRevNum, startRevNum)
         
     @staticmethod
@@ -67,7 +71,7 @@ class Helper(object):
         if( 'message' in logItem.data ):
             returnStr += logItem.message
         return returnStr
-
+        
 class Notifier(object):
     def __init__(self, irc, channel, name, url):
         self.irc = irc #needed to write output to IRC
@@ -92,6 +96,23 @@ class Notifier(object):
                 itemStr = Helper.logItemToString(item)
                 self.irc.queueMsg( ircmsgs.privmsg(self.channel, itemStr) )
             self.lastRev = headRev
+
+#This class is needed to create picklable objects of Notifier
+#The IRC-instance in Notifier is not picklable (makes sense)
+class NotifierConfig(object):
+    def __init__(self, notifier):
+        if(notifier == None):
+            self.channel = ""
+            self.name = ""
+            self.url = ""
+        else:
+            self.channel = notifier.channel
+            self.name = notifier.name
+            self.url = notifier.url
+        
+    def getNotifier(self, irc):
+        return Notifier(irc, self.channel, self.name, self.url)            
+        
         
 class Subversion(callbacks.Plugin):
     """This plugin adds commands to gather information about a specific SVN repository."""
@@ -105,27 +126,21 @@ class Subversion(callbacks.Plugin):
         #second: notifier
         self.notifiers = {};
         
-        #load the notifiers (if any) from config
-        #NOTE:  The following for-loop is needed, but I do not know why.
-        #       I reused code from the Alias-plugin to get the config working, but
-        #       it wasn't well documented.
-        #       If this loop misses, no values will be read
-        group = conf.supybot.plugins.Subversion.notifiers
-        for (name, alias) in registry._cache.iteritems():
-            if name.startswith('supybot.plugins.Subversion.notifiers.'):
-                name = name[len('supybot.plugins.Subversion.notifiers.'):]
-                if '.' in name:
-                    continue
-                conf.registerGlobalValue(group, name, registry.String('', ''))
-                conf.registerGlobalValue(group.get(name), 'channel', registry.String('', ''))
-                conf.registerGlobalValue(group.get(name), 'url', registry.String('', ''))
-
-        #this reads the actual values...
-        for (name, value) in group.getValues(fullNames=False):
-            channel = value.channel()
-            url = value.url()
-            irc.queueMsg( ircmsgs.privmsg(channel, "Adding notifier '" + name + "' from config") )            
-            notifier = Notifier(irc, channel, name, url)
+        #read the notifiers from file
+        #use NotifierConfig-objects for getting them
+        filepath = conf.supybot.directories.data.dirize('Subversion.db')
+        if( os.path.exists(filepath) ):
+            try:
+                notifierConfigs = cPickle.load( open( filepath, "rb" ) )
+                for config in notifierConfigs:
+                    self.notifiers[config.name] = config.getNotifier(irc)
+            except EOFError as error:
+                irc.reply("Error when trying to load existing data.")
+                irc.reply("Message: " + str(error))
+        
+        #this adds the notifiers
+        for name, notifier in self.notifiers.items():
+            irc.queueMsg( ircmsgs.privmsg(notifier.channel, "Adding notifier '" + notifier.name + "' from config") )
             self._addNotifier(irc, notifier)
 
     def die(self):
@@ -137,7 +152,17 @@ class Subversion(callbacks.Plugin):
                 #this happens if the key is not there
                 pass
                 
-            del self.notifiers[key]
+        #pickle the notifiers to file
+        #use notifierConfig-instaces for that
+        try:
+            filepath = conf.supybot.directories.data.dirize('Subversion.db')
+            notifierConfigs = []
+            for name, notifier in self.notifiers.items():
+                notifierConfigs.append( NotifierConfig(notifier) )
+            cPickle.dump( notifierConfigs, open( filepath, "wb" ) )
+        except cPickle.PicklingError as error:
+            print("More: Error when pickling to file...")
+            print(error)
             
         #kill the rest of the plugin
         self.__parent.die()    
@@ -148,9 +173,8 @@ class Subversion(callbacks.Plugin):
         except AssertionError:
             #this happens when the plugin was unloaded uncleanly
             #do nothing else, but add this event to the notifier list (so the user can remove it)
-            irc.queueMsg( ircmsgs.privmsg(channel, "There already is a notifier called '" + notifier.name + "'") )
+            irc.queueMsg( ircmsgs.privmsg(notifier.channel, "There already is a notifier called '" + notifier.name + "'") )
             irc.noReply()
-        self.notifiers[notifier.name] = notifier
     
     def getheadrev(self, irc, msg, args, url):
         """<url>
@@ -172,7 +196,7 @@ class Subversion(callbacks.Plugin):
         #output the results
         for item in log:
             itemStr = Helper.logItemToString(item)
-            irc.reply( itemStr )        
+            irc.reply( itemStr )
     svnlog = wrap(svnlog, ['text', additional(('int', 'range'), 5)])
     
     def add(self, irc, msg, args, channel, name, url):
@@ -186,17 +210,12 @@ class Subversion(callbacks.Plugin):
             irc.reply( "There already is a notifier called '" + name + "'" )
             return
         
-        #if not, add it to the config
-        group = conf.supybot.plugins.Subversion.notifiers
-        group.register(name, registry.String(name, ''))
-        group.get(name).register('channel', registry.String(channel, ''))
-        group.get(name).register('url', registry.String(url, ''))
-        
         #needs to be printed before registering the event, because it will be executed immediately
         irc.reply( "Adding Subversion Notifier '" + name + "' to channel " + channel + " with " + url )
         
         notifier = Notifier(irc, channel, name, url)
         self._addNotifier(irc, notifier)
+        self.notifiers[name] = notifier
     add = wrap(add, [('checkChannelCapability', 'op'), 'somethingWithoutSpaces', 'somethingWithoutSpaces'])
     
     
@@ -208,12 +227,6 @@ class Subversion(callbacks.Plugin):
         if not(name in self.notifiers):
             irc.reply( "There is no notifier named '" + name + "'")
             return
-        
-        group = conf.supybot.plugins.Subversion.notifiers
-        for (confName, confValue) in group.getValues(fullNames=False):
-            if( confName == name ):
-                conf.supybot.plugins.Subversion.notifiers.unregister(confName)
-                break;
         
         schedule.removePeriodicEvent(name)
         irc.reply( "Removed '" + name + "'")
