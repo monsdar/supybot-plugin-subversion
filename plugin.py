@@ -57,13 +57,13 @@ class Helper(object):
         return Helper.getLogItemsByRange(url, headRevNum, startRevNum)
         
     @staticmethod
-    def logItemToString(logItem):
+    def logItemToString(logItem, reponame):
         #--> "\x02" for bold
         #--> "\x16" for italic/reverse
         #--> "\x1F" for underlined
         returnStr = ""
         if( 'revision' in logItem.data ):
-            returnStr += "\x02" + str(logItem.revision.number) + "\x02" + " - "
+            returnStr += "\x02" + reponame + " " + str(logItem.revision.number) + "\x02" + " - "
         if( 'date' in logItem.data ):
             returnStr += time.strftime("%b-%d %H:%M", time.gmtime((logItem.date))) + " - "
         if( 'author' in logItem.data ):
@@ -88,12 +88,12 @@ class Notifier(object):
         
     def check(self):
         headRev = Helper.getHeadRevNum(self.url)
-        if(self.lastRev < headRev):        
-            message = "\x02Subversion Notifier:\x02 Detected changes in '" + self.name + "'. \x02New Revision: " + str(headRev) + "\x02"
-            self.irc.queueMsg( ircmsgs.privmsg(self.channel, message) )
-            log = Helper.getLogItemsByRange(self.url, self.lastRev, headRev)
+        if(self.lastRev < headRev):
+            #message = "\x02Subversion Notifier:\x02 Detected changes in '" + self.name + "'. \x02New Revision: " + str(headRev) + "\x02"
+            #self.irc.queueMsg( ircmsgs.privmsg(self.channel, message) )
+            log = Helper.getLogItemsByRange(self.url, self.lastRev + 1, headRev)
             for item in log:
-                itemStr = Helper.logItemToString(item)
+                itemStr = Helper.logItemToString(item, self.name)
                 self.irc.queueMsg( ircmsgs.privmsg(self.channel, itemStr) )
             self.lastRev = headRev
 
