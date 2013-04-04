@@ -89,13 +89,11 @@ class Notifier(object):
     def check(self):
         headRev = Helper.getHeadRevNum(self.url)
         if(self.lastRev < headRev):
-            #message = "\x02Subversion Notifier:\x02 Detected changes in '" + self.name + "'. \x02New Revision: " + str(headRev) + "\x02"
-            #self.irc.queueMsg( ircmsgs.privmsg(self.channel, message) )
-            log = Helper.getLogItemsByRange(self.url, self.lastRev + 1, headRev)
+            self.lastRev = headRev #do this first, avoid crashes leading to multiple output
+            log = Helper.getLogItemsByRange(self.url, self.lastRev, headRev)
             for item in log:
                 itemStr = Helper.logItemToString(item, self.name)
                 self.irc.queueMsg( ircmsgs.privmsg(self.channel, itemStr) )
-            self.lastRev = headRev
 
 #This class is needed to create picklable objects of Notifier
 #The IRC-instance in Notifier is not picklable (makes sense)
