@@ -138,7 +138,7 @@ class Subversion(callbacks.Plugin):
         
         #this adds the notifiers
         for name, notifier in self.notifiers.items():
-            irc.queueMsg( ircmsgs.privmsg(notifier.channel, "Adding notifier '" + notifier.name + "' from config") )
+            irc.reply( "Adding notifier '" + notifier.name + "' from config" )
             self._addNotifier(irc, notifier)
 
     def die(self):
@@ -171,8 +171,7 @@ class Subversion(callbacks.Plugin):
         except AssertionError:
             #this happens when the plugin was unloaded uncleanly
             #do nothing else, but add this event to the notifier list (so the user can remove it)
-            irc.queueMsg( ircmsgs.privmsg(notifier.channel, "There already is a notifier called '" + notifier.name + "'") )
-            irc.noReply()
+            irc.reply( "There already is a notifier called '" + notifier.name + "'" )
     
     def getheadrev(self, irc, msg, args, url):
         """<url>
@@ -238,8 +237,7 @@ class Subversion(callbacks.Plugin):
         Optionally posts the list in the given <channel>
         """
         if not( self.notifiers ):
-            irc.queueMsg( ircmsgs.privmsg(channel, "No notifiers configured") )
-            irc.noReply()
+            irc.reply( "No notifiers configured" )
             return
         
         for key, notifier in self.notifiers.items():
@@ -247,8 +245,7 @@ class Subversion(callbacks.Plugin):
             output += notifier.channel + " - "
             output += notifier.name + " - "
             output += notifier.url
-            irc.queueMsg( ircmsgs.privmsg(channel, output) )
-            irc.noReply()
+            irc.reply( output )
     list = wrap(list, ['channel'])
 
 Class = Subversion
