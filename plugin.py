@@ -69,7 +69,11 @@ class Helper(object):
         if( 'author' in logItem.data ):
             returnStr += "\x02" + logItem.author + "\x02" + " - "
         if( 'message' in logItem.data ):
-            returnStr += logItem.message
+            messages = logItem.message.split('\n')
+            returnStr += "|| "
+            for message in messages:
+                returnStr += message + " || "
+            
         return returnStr
         
 class Notifier(object):
@@ -89,7 +93,7 @@ class Notifier(object):
     def check(self):
         headRev = Helper.getHeadRevNum(self.url)
         if(self.lastRev < headRev):
-            self.lastRev = headRev #do this first, avoid crashes leading to multiple output
+            self.lastRev = headRev #do this first, avoid that crashes lead to multiple output
             log = Helper.getLogItemsByRange(self.url, self.lastRev, headRev)
             for item in log:
                 itemStr = Helper.logItemToString(item, self.name)
@@ -188,11 +192,11 @@ class Subversion(callbacks.Plugin):
         The <range> let's you set a specific range of entries returned, defaults to 5.
         """
         #get the revisions and the log for them
-        log = getLastLogItems(url, range)
+        log = Helper.getLastLogItems(url, range)
         
         #output the results
         for item in log:
-            itemStr = Helper.logItemToString(item)
+            itemStr = Helper.logItemToString(item, "Subversion")
             irc.reply( itemStr )
     svnlog = wrap(svnlog, ['text', additional(('int', 'range'), 5)])
     
